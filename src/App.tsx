@@ -218,11 +218,11 @@ function detectLang() {
 
 export default function App() {
   const [years, setYears] = useState(30);
-  const [annualExpense, setAnnualExpense] = useState(100000);
+  const [annualExpense, setAnnualExpense] = useState(60000);
   const [inflationPct, setInflationPct] = useState(4);
   const [timing, setTiming] = useState<"end" | "begin">("end");
-  const [pctETF, setPctETF] = useState(50);
-  const [pctBond, setPctBond] = useState(40);
+  const [pctETF, setPctETF] = useState(60);
+  const [pctBond, setPctBond] = useState(30);
   const [pctCash, setPctCash] = useState(10);
   const [retETF, setRetETF] = useState(7);
   const [retBond, setRetBond] = useState(3);
