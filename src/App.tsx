@@ -1,5 +1,199 @@
-import React from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+
+function formatCurrency(x) {
+  if (!Number.isFinite(x)) return "-";
+  return x.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
+function toPct(x) {
+  if (x === "" || x === null || x === undefined) return 0;
+  const n = Number(x);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function buildCSV(rows) {
+  const process = (r) => r.map((c) => (typeof c === "string" ? `"${String(c).replace(/"/g, '""')}"` : c)).join(",");
+  return [rows[0].map((h) => `"${h}"`).join(","), ...rows.slice(1).map(process)].join("\n");
+}
+
+function downloadCSV(filename, rows) {
+  const csv = buildCSV(rows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function requiredPrincipalByFormula({ firstWithdrawal, r, g, N, timing }) {
+  if (N <= 0) return 0;
+  let pv;
+  if (Math.abs(r - g) < 1e-9) {
+    pv = (firstWithdrawal * N) / (1 + r);
+  } else {
+    const ratio = Math.pow((1 + g) / (1 + r), N);
+    pv = (firstWithdrawal * (1 - ratio)) / (r - g);
+  }
+  if (timing === "begin") pv *= 1 + r;
+  return Math.max(0, pv);
+}
+
+function simulateCashflow({ initialPrincipal, years, expense0, r, g, timing }) {
+  const rows = [];
+  let principal = initialPrincipal;
+  for (let y = 1; y <= years; y++) {
+    const expense = expense0 * Math.pow(1 + g, y - 1);
+    let growth;
+    if (timing === "end") {
+      growth = principal * r;
+      principal = principal + growth - expense;
+    } else {
+      principal = principal - expense;
+      growth = principal * r;
+      principal = principal + growth;
+    }
+    rows.push({ year: y, expense, growth, endPrincipal: principal });
+  }
+  return rows;
+}
+
+function almostEqual(a, b, eps = 1e-6) {
+  return Math.abs(a - b) <= eps;
+}
+
+function runTests() {
+  const r = 0.07;
+  const g = 0.03;
+  const N = 30;
+  const W1 = 100000;
+  const pvEnd = requiredPrincipalByFormula({ firstWithdrawal: W1, r, g, N, timing: "end" });
+  const simEnd = simulateCashflow({ initialPrincipal: pvEnd, years: N, expense0: W1, r, g, timing: "end" });
+  console.assert(almostEqual(simEnd[simEnd.length - 1].endPrincipal, 0, 1), "end timing fails");
+  const pvBegin = requiredPrincipalByFormula({ firstWithdrawal: W1, r, g, N, timing: "begin" });
+  const simBegin = simulateCashflow({ initialPrincipal: pvBegin, years: N, expense0: W1, r, g, timing: "begin" });
+  console.assert(almostEqual(simBegin[simBegin.length - 1].endPrincipal, 0, 1), "begin timing fails");
+  const csv = buildCSV([["a","b"],[1,2],[3,4]]);
+  console.assert(csv.split("\n").length === 3, "csv rows count");
+  console.assert(simEnd.length === N, "rows length");
+}
+
+const translations = {
+  en: { title: "Retirement Expense Calculator", subtitle: "Enter conditions → Calculate required initial principal and generate cashflow table.", basic: "Basic Parameters", years: "Years", firstExpense: "First Year Expense (USD)", inflation: "Inflation (%/yr)", timing: "Withdrawal Timing", end: "End of Year", begin: "Beginning of Year", allocation: "Asset Allocation", etf: "ETF (%)", bond: "Bond (%)", cash: "Cash (%)", warning: "⚠️ Allocation sum is currently {sum}%, please adjust to 100%.", return: "Expected Returns", returnInfo: "Weighted nominal return ≈ {ret}% (r), inflation g = {inf}%, r − g = {diff}%", lowReturn: "⚠️ Nominal return ≤ inflation, capital may deplete faster.", required: "Required Initial Principal", formula: "Formula: PV_end = W₁ · [1 - ((1+g)/(1+r))^N] / (r - g). Beginning withdrawals multiply by (1+r).", chart: "Chart: End Principal, Annual Expense, Investment Return", table: "Annual Cashflow Table", download: "Download CSV", year: "Year", expense: "Expense", growth: "Return", principal: "End Principal", balance: "Estimated final balance at year {years}: {balance}", notes: "Notes & Assumptions", noteList: ["Toggle beginning/end withdrawals.","First year withdrawal = first expense, grows by g annually.","Nominal return r from allocation weights.","Principal calculated with growing annuity PV formula.","If r ≤ g, long-term sustainability is difficult.","Educational use only, not financial advice."] },
+  zh: { title: "退休支出試算器", subtitle: "輸入條件 → 計算所需起始本金，並產出年度現金流表。", basic: "基本參數", years: "期間（年）", firstExpense: "首年支出（USD）", inflation: "通膨（%/年）", timing: "提領時點", end: "期末提領", begin: "期初提領", allocation: "資產配置", etf: "ETF (%)", bond: "債券 (%)", cash: "現金 (%)", warning: "⚠️ 配置加總目前為 {sum}%，請調整至 100%。", return: "預期名目報酬", returnInfo: "加權名目報酬 ≈ {ret}% (r)，通膨 g = {inf}% ，r − g = {diff}%", lowReturn: "⚠️ 名目報酬 ≤ 通膨，理論上本金會加速耗盡。", required: "所需起始本金", formula: "公式：PV_end = W₁ · [1 - ((1+g)/(1+r))^N] / (r - g)。期初提領則乘以 (1+r)。", chart: "走勢圖：年末本金、年度支出與投資報酬", table: "逐年現金流表", download: "下載 CSV", year: "年份", expense: "年度支出", growth: "投資報酬", principal: "年末本金", balance: "第 {years} 年期末預估餘額：{balance}", notes: "說明與假設", noteList: ["可切換期初/期末提領。","第一年提領額等於首年支出，之後每年按通膨成長。","名目報酬由配置權重加權計算。","所需本金以成長年金現值計算。","若 r ≤ g，長期難以維持購買力。","本工具為教育用途，不構成投資建議。"] },
+  ja: { title: "退職支出シミュレーター", subtitle: "条件を入力 → 必要な初期元本を計算し、キャッシュフローテーブルを生成します。", basic: "基本パラメータ", years: "期間（年）", firstExpense: "初年度支出（USD）", inflation: "インフレ率（%/年）", timing: "引き出しタイミング", end: "期末引き出し", begin: "期首引き出し", allocation: "資産配分", etf: "ETF (%)", bond: "債券 (%)", cash: "現金 (%)", warning: "⚠️ 配分の合計は現在 {sum}% です。100%に調整してください。", return: "期待収益率", returnInfo: "加重名目収益率 ≈ {ret}% (r)、インフレ g = {inf}% 、r − g = {diff}%", lowReturn: "⚠️ 名目収益率 ≤ インフレ、資金が早く尽きる可能性。", required: "必要な初期元本", formula: "式: PV_end = W₁ · [1 - ((1+g)/(1+r))^N] / (r - g)。期首引き出しは (1+r) を掛けます。", chart: "推移グラフ：期末元本、年間支出、投資収益", table: "年間キャッシュフローテーブル", download: "CSV ダウンロード", year: "年", expense: "年間支出", growth: "投資収益", principal: "期末元本", balance: "{years} 年目期末予想残高：{balance}", notes: "説明と前提", noteList: ["期首/期末引き出しを切り替え可能。","初年度支出は入力額、以降はインフレで成長。","名目収益率は配分加重平均。","必要元本は成長年金の現価で計算。","r ≤ g の場合、持続は困難。","教育目的のみであり、投資助言ではありません。"] }
+};
 
 export default function App() {
-  return <div style={{padding: 24, fontFamily: "system-ui"}}>Build OK</div>;
-}
+  const [years, setYears] = useState(30);
+  const [annualExpense, setAnnualExpense] = useState(100000);
+  const [inflationPct, setInflationPct] = useState(4);
+  const [timing, setTiming] = useState("end");
+  const [pctETF, setPctETF] = useState(50);
+  const [pctBond, setPctBond] = useState(40);
+  const [pctCash, setPctCash] = useState(10);
+  const [retETF, setRetETF] = useState(7);
+  const [retBond, setRetBond] = useState(3);
+  const [retCash, setRetCash] = useState(0);
+  const [lang, setLang] = useState("en");
+
+  const t = translations[lang];
+  const allocSum = toPct(pctETF) + toPct(pctBond) + toPct(pctCash);
+  const allocWarn = Math.abs(allocSum - 100) > 0.001;
+
+  const weightedReturnPct = useMemo(() => {
+    const wETF = toPct(pctETF) / 100;
+    const wBond = toPct(pctBond) / 100;
+    const wCash = toPct(pctCash) / 100;
+    const v = (wETF * toPct(retETF) + wBond * toPct(retBond) + wCash * toPct(retCash)) / 100;
+    return v * 100;
+  }, [pctETF, pctBond, pctCash, retETF, retBond, retCash]);
+
+  const nominalR = weightedReturnPct / 100;
+  const inflationR = toPct(inflationPct) / 100;
+
+  const neededPrincipal = useMemo(() => {
+    if (!Number.isFinite(nominalR) || !Number.isFinite(inflationR) || !Number.isFinite(years) || years <= 0) return 0;
+    return requiredPrincipalByFormula({ firstWithdrawal: Number(annualExpense), r: nominalR, g: inflationR, N: Number(years), timing });
+  }, [annualExpense, nominalR, inflationR, years, timing]);
+
+  const rows = useMemo(() => {
+    if (!Number.isFinite(neededPrincipal)) return [];
+    return simulateCashflow({ initialPrincipal: neededPrincipal, years: Number(years), expense0: Number(annualExpense), r: nominalR, g: inflationR, timing });
+  }, [neededPrincipal, years, annualExpense, nominalR, inflationR, timing]);
+
+  const finalBalance = rows.length ? rows[rows.length - 1].endPrincipal : 0;
+  const rMinusG = (weightedReturnPct - toPct(inflationPct)).toFixed(2);
+
+  const headers = [t.year, t.expense, t.growth, t.principal];
+  const csvRows = [headers, ...rows.map((rec) => [rec.year, Math.round(rec.expense), Math.round(rec.growth), Math.round(rec.endPrincipal)])];
+
+  useEffect(() => { runTests(); }, []);
+
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-900 p-6">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1 space-y-4">
+          <div className="bg-white rounded-2xl shadow p-5">
+            <div className="flex justify-between">
+              <h1 className="text-2xl font-semibold mb-1">{t.title}</h1>
+              <select value={lang} onChange={(e) => setLang(e.target.value)} className="border rounded px-2 py-1">
+                <option value="en">English</option>
+                <option value="zh">繁體中文</option>
+                <option value="ja">日本語</option>
+              </select>
+            </div>
+            <p className="text-sm text-gray-600">{t.subtitle}</p>
+          </div>
+          <div className="bg-white rounded-2xl shadow p-5 space-y-4">
+            <h2 className="text-lg font-medium">{t.basic}</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm">{t.years}
+                <input type="number" min={1} className="mt-1 w-full border rounded-xl px-3 py-2" value={years} onChange={(e) => setYears(Number(e.target.value))} />
+              </label>
+              <label className="text-sm">{t.firstExpense}
+                <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={annualExpense} onChange={(e) => setAnnualExpense(Number(e.target.value))} />
+              </label>
+              <label className="text-sm">{t.inflation}
+                <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={inflationPct} onChange={(e) => setInflationPct(Number(e.target.value))} />
+              </label>
+            </div>
+            <div className="mt-2 text-sm">
+              <div className="font-medium mb-1">{t.timing}</div>
+              <div className="flex items-center gap-4">
+                <label className="inline-flex items-center gap-2">
+                  <input type="radio" name="timing" value="end" checked={timing === "end"} onChange={() => setTiming("end")} /> {t.end}
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input type="radio" name="timing" value="begin" checked={timing === "begin"} onChange={() => setTiming("begin")} /> {t.begin}
+                </label>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl shadow p-5 space-y-4">
+            <h2 className="text-lg font-medium">{t.allocation}</h2>
+            <div className="grid grid-cols-3 gap-3">
+              <label className="text-sm">{t.etf}
+                <input type="number" className="mt-1 w-full border rounded-xl px-3 py-2" value={pctETF} onChange={(e) => setPctETF(Number(e.target.value))} />
+              </label>
+              <label className="text-sm">{t.bond}
+                <input type="number" className="mt-1 w-full border rounded-xl px-3 py-2" value={pctBond} onChange={(e) => setPctBond(Number(e.target.value))} />
+              </label>
+              <label className="text-sm">{t.cash}
+                <input type="number" className="mt-1 w-full border rounded-xl px-3 py-2" value={pctCash} onChange={(e) => setPctCash(Number(e.target.value))} />
+              </label>
+            </div>
+            {allocWarn && (
+              <p className="text-sm text-amber-600">{t.warning.replace("{sum}", allocSum.toFixed(1))}</p>
+            )}
+          </div>
+          <div className="bg-white rounded-2xl shadow p-5 space-y-4">
+            <h2 className="text-lg font-medium">{t["return"]}</h2>
+            <div className="grid grid-cols-3 gap-3">
+              <label className="text-sm">ETF (%)
+                <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={retETF} onChange={(e) => setRetETF(Number(e.target.value))} />
+              </label>
+              <label className="text-sm">Bond (%)
+                <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3
