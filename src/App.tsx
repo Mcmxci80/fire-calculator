@@ -1,24 +1,23 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 
-function formatCurrency(x: number) {
+function formatCurrency(x) {
   if (!Number.isFinite(x)) return "-";
   return x.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
-function toPct(x: any) {
+function toPct(x) {
   if (x === "" || x === null || x === undefined) return 0;
   const n = Number(x);
   return Number.isFinite(n) ? n : 0;
 }
 
-function buildCSV(rows: (string | number)[][]) {
-  const process = (r: (string | number)[]) =>
-    r.map((c) => (typeof c === "string" ? `"${String(c).replace(/"/g, '""')}"` : c)).join(",");
+function buildCSV(rows) {
+  const process = (r) => r.map((c) => (typeof c === "string" ? `"${String(c).replace(/"/g, '""')}"` : c)).join(",");
   return [rows[0].map((h) => `"${h}"`).join(","), ...rows.slice(1).map(process)].join("\n");
 }
 
-function downloadCSV(filename: string, rows: (string | number)[][]) {
+function downloadCSV(filename, rows) {
   const csv = buildCSV(rows);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -29,15 +28,9 @@ function downloadCSV(filename: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(url);
 }
 
-function requiredPrincipalByFormula({
-  firstWithdrawal,
-  r,
-  g,
-  N,
-  timing
-}: { firstWithdrawal: number; r: number; g: number; N: number; timing: "end" | "begin" }) {
+function requiredPrincipalByFormula({ firstWithdrawal, r, g, N, timing }) {
   if (N <= 0) return 0;
-  let pv: number;
+  let pv;
   if (Math.abs(r - g) < 1e-9) {
     pv = (firstWithdrawal * N) / (1 + r);
   } else {
@@ -48,19 +41,12 @@ function requiredPrincipalByFormula({
   return Math.max(0, pv);
 }
 
-function simulateCashflow({
-  initialPrincipal,
-  years,
-  expense0,
-  r,
-  g,
-  timing
-}: { initialPrincipal: number; years: number; expense0: number; r: number; g: number; timing: "end" | "begin" }) {
-  const rows: { year: number; expense: number; growth: number; endPrincipal: number }[] = [];
+function simulateCashflow({ initialPrincipal, years, expense0, r, g, timing }) {
+  const rows = [];
   let principal = initialPrincipal;
   for (let y = 1; y <= years; y++) {
     const expense = expense0 * Math.pow(1 + g, y - 1);
-    let growth: number;
+    let growth;
     if (timing === "end") {
       growth = principal * r;
       principal = principal + growth - expense;
@@ -74,19 +60,43 @@ function simulateCashflow({
   return rows;
 }
 
-function almostEqual(a: number, b: number, eps = 1e-6) {
+function simulateUntilDepleted({ initialPrincipal, expense0, r, g, timing, maxYears = 200 }) {
+  const rows = [];
+  let principal = initialPrincipal;
+  let y = 0;
+  while (y < maxYears && principal > 0) {
+    y += 1;
+    const expense = expense0 * Math.pow(1 + g, y - 1);
+    let growth;
+    if (timing === "end") {
+      growth = principal * r;
+      principal = principal + growth - expense;
+    } else {
+      principal = principal - expense;
+      growth = principal * r;
+      principal = principal + growth;
+    }
+    rows.push({ year: y, expense, growth, endPrincipal: principal });
+  }
+  return rows;
+}
+
+function almostEqual(a, b, eps = 1e-6) {
   return Math.abs(a - b) <= eps;
 }
 
 function runTests() {
-  const r = 0.07, g = 0.03, N = 30, W1 = 100000;
+  const r = 0.07;
+  const g = 0.03;
+  const N = 30;
+  const W1 = 100000;
   const pvEnd = requiredPrincipalByFormula({ firstWithdrawal: W1, r, g, N, timing: "end" });
   const simEnd = simulateCashflow({ initialPrincipal: pvEnd, years: N, expense0: W1, r, g, timing: "end" });
   console.assert(almostEqual(simEnd[simEnd.length - 1].endPrincipal, 0, 1), "end timing fails");
   const pvBegin = requiredPrincipalByFormula({ firstWithdrawal: W1, r, g, N, timing: "begin" });
   const simBegin = simulateCashflow({ initialPrincipal: pvBegin, years: N, expense0: W1, r, g, timing: "begin" });
   console.assert(almostEqual(simBegin[simBegin.length - 1].endPrincipal, 0, 1), "begin timing fails");
-  const csv = buildCSV([["a", "b"], [1, 2], [3, 4]]);
+  const csv = buildCSV([["a","b"],[1,2],[3,4]]);
   console.assert(csv.split("\n").length === 3, "csv rows count");
   console.assert(simEnd.length === N, "rows length");
 }
@@ -95,6 +105,9 @@ const translations = {
   en: {
     title: "Retirement Expense Calculator",
     subtitle: "Enter conditions → Calculate required initial principal and generate cashflow table.",
+    mode: "Mode",
+    byYears: "Target Years",
+    byPrincipal: "Given Principal",
     basic: "Basic Parameters",
     years: "Years",
     firstExpense: "First Year Expense (USD)",
@@ -111,6 +124,8 @@ const translations = {
     returnInfo: "Weighted nominal return ≈ {ret}% (r), inflation g = {inf}%, r − g = {diff}%",
     lowReturn: "⚠️ Nominal return ≤ inflation, capital may deplete faster.",
     required: "Required Initial Principal",
+    yearsResult: "Years Supported",
+    initialPrincipal: "Initial Principal (USD)",
     formula: "Formula: PV_end = W₁ · [1 - ((1+g)/(1+r))^N] / (r - g). Beginning withdrawals multiply by (1+r).",
     chart: "Chart: End Principal, Annual Expense, Investment Return",
     table: "Annual Cashflow Table",
@@ -132,7 +147,10 @@ const translations = {
   },
   zh: {
     title: "退休支出試算器",
-    subtitle: "輸入條件 → 計算所需起始本金，並產出年度現金流表。",
+    subtitle: "輸入條件 → 計算所需起始本金，或在固定本金下推估可支撐年數。",
+    mode: "模式",
+    byYears: "輸入年數",
+    byPrincipal: "輸入本金",
     basic: "基本參數",
     years: "期間（年）",
     firstExpense: "首年支出（USD）",
@@ -149,6 +167,8 @@ const translations = {
     returnInfo: "加權名目報酬 ≈ {ret}% (r)，通膨 g = {inf}% ，r − g = {diff}%",
     lowReturn: "⚠️ 名目報酬 ≤ 通膨，理論上本金會加速耗盡。",
     required: "所需起始本金",
+    yearsResult: "可支撐年數",
+    initialPrincipal: "起始本金（USD）",
     formula: "公式：PV_end = W₁ · [1 - ((1+g)/(1+r))^N] / (r - g)。期初提領則乘以 (1+r)。",
     chart: "走勢圖：年末本金、年度支出與投資報酬",
     table: "逐年現金流表",
@@ -170,7 +190,10 @@ const translations = {
   },
   ja: {
     title: "退職支出シミュレーター",
-    subtitle: "条件を入力 → 必要な初期元本を計算し、キャッシュフローテーブルを生成します。",
+    subtitle: "条件を入力 → 必要元本を計算、または元本固定で使用可能年数を推定します。",
+    mode: "モード",
+    byYears: "年数を指定",
+    byPrincipal: "元本を指定",
     basic: "基本パラメータ",
     years: "期間（年）",
     firstExpense: "初年度支出（USD）",
@@ -187,6 +210,8 @@ const translations = {
     returnInfo: "加重名目収益率 ≈ {ret}% (r)、インフレ g = {inf}% 、r − g = {diff}%",
     lowReturn: "⚠️ 名目収益率 ≤ インフレ、資金が早く尽きる可能性。",
     required: "必要な初期元本",
+    yearsResult: "使用可能年数",
+    initialPrincipal: "初期元本（USD）",
     formula: "式: PV_end = W₁ · [1 - ((1+g)/(1+r))^N] / (r - g)。期首引き出しは (1+r) を掛けます。",
     chart: "推移グラフ：期末元本、年間支出、投資収益",
     table: "年間キャッシュフローテーブル",
@@ -217,17 +242,19 @@ function detectLang() {
 }
 
 export default function App() {
+  const [mode, setMode] = useState("years");
   const [years, setYears] = useState(30);
-  const [annualExpense, setAnnualExpense] = useState(60000);
+  const [initialPrincipalInput, setInitialPrincipalInput] = useState(2600000);
+  const [annualExpense, setAnnualExpense] = useState(100000);
   const [inflationPct, setInflationPct] = useState(4);
-  const [timing, setTiming] = useState<"end" | "begin">("end");
-  const [pctETF, setPctETF] = useState(60);
-  const [pctBond, setPctBond] = useState(30);
+  const [timing, setTiming] = useState("end");
+  const [pctETF, setPctETF] = useState(50);
+  const [pctBond, setPctBond] = useState(40);
   const [pctCash, setPctCash] = useState(10);
   const [retETF, setRetETF] = useState(7);
   const [retBond, setRetBond] = useState(3);
   const [retCash, setRetCash] = useState(0);
-  const [lang, setLang] = useState<"en" | "zh" | "ja">("en");
+  const [lang, setLang] = useState("en");
 
   const t = translations[lang];
   const allocSum = toPct(pctETF) + toPct(pctBond) + toPct(pctCash);
@@ -245,15 +272,25 @@ export default function App() {
   const inflationR = toPct(inflationPct) / 100;
 
   const neededPrincipal = useMemo(() => {
+    if (mode !== "years") return 0;
     if (!Number.isFinite(nominalR) || !Number.isFinite(inflationR) || !Number.isFinite(years) || years <= 0) return 0;
     return requiredPrincipalByFormula({ firstWithdrawal: Number(annualExpense), r: nominalR, g: inflationR, N: Number(years), timing });
-  }, [annualExpense, nominalR, inflationR, years, timing]);
+  }, [mode, annualExpense, nominalR, inflationR, years, timing]);
 
-  const rows = useMemo(() => {
+  const rowsYears = useMemo(() => {
+    if (mode !== "years") return [];
     if (!Number.isFinite(neededPrincipal)) return [];
     return simulateCashflow({ initialPrincipal: neededPrincipal, years: Number(years), expense0: Number(annualExpense), r: nominalR, g: inflationR, timing });
-  }, [neededPrincipal, years, annualExpense, nominalR, inflationR, timing]);
+  }, [mode, neededPrincipal, years, annualExpense, nominalR, inflationR, timing]);
 
+  const rowsPrincipal = useMemo(() => {
+    if (mode !== "principal") return [];
+    const p0 = Number(initialPrincipalInput);
+    if (!Number.isFinite(p0) || p0 <= 0) return [];
+    return simulateUntilDepleted({ initialPrincipal: p0, expense0: Number(annualExpense), r: nominalR, g: inflationR, timing, maxYears: 200 });
+  }, [mode, initialPrincipalInput, annualExpense, nominalR, inflationR, timing]);
+
+  const rows = mode === "years" ? rowsYears : rowsPrincipal;
   const finalBalance = rows.length ? rows[rows.length - 1].endPrincipal : 0;
   const rMinusG = (weightedReturnPct - toPct(inflationPct)).toFixed(2);
 
@@ -263,6 +300,8 @@ export default function App() {
   useEffect(() => { runTests(); }, []);
   useEffect(() => { setLang(detectLang()); }, []);
 
+  const yearsSupported = mode === "principal" ? rowsPrincipal.length : Number(years);
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-6">
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -270,7 +309,7 @@ export default function App() {
           <div className="bg-white rounded-2xl shadow p-5">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <h1 className="text-2xl sm:text-3xl font-semibold leading-tight">{t.title}</h1>
-              <select value={lang} onChange={(e) => setLang(e.target.value as any)} className="border rounded-xl px-3 py-2 w-full sm:w-auto min-w-[140px]">
+              <select value={lang} onChange={(e) => setLang(e.target.value)} className="border rounded-xl px-3 py-2 w-full sm:w-auto min-w-[140px]">
                 <option value="en">English</option>
                 <option value="zh">繁體中文</option>
                 <option value="ja">日本語</option>
@@ -280,11 +319,31 @@ export default function App() {
           </div>
 
           <div className="bg-white rounded-2xl shadow p-5 space-y-4">
+            <div className="text-sm">
+              <div className="font-medium mb-1">{t.mode}</div>
+              <div className="flex items-center gap-4">
+                <label className="inline-flex items-center gap-2">
+                  <input type="radio" name="mode" value="years" checked={mode === "years"} onChange={() => setMode("years")} /> {t.byYears}
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input type="radio" name="mode" value="principal" checked={mode === "principal"} onChange={() => setMode("principal")} /> {t.byPrincipal}
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow p-5 space-y-4">
             <h2 className="text-lg font-medium">{t.basic}</h2>
             <div className="grid grid-cols-2 gap-3">
-              <label className="text-sm">{t.years}
-                <input type="number" min={1} className="mt-1 w-full border rounded-xl px-3 py-2" value={years} onChange={(e) => setYears(Number(e.target.value))} />
-              </label>
+              {mode === "years" ? (
+                <label className="text-sm">{t.years}
+                  <input type="number" min={1} className="mt-1 w-full border rounded-xl px-3 py-2" value={years} onChange={(e) => setYears(Number(e.target.value))} />
+                </label>
+              ) : (
+                <label className="text-sm">{t.initialPrincipal}
+                  <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={initialPrincipalInput} onChange={(e) => setInitialPrincipalInput(Number(e.target.value))} />
+                </label>
+              )}
               <label className="text-sm">{t.firstExpense}
                 <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={annualExpense} onChange={(e) => setAnnualExpense(Number(e.target.value))} />
               </label>
@@ -336,9 +395,7 @@ export default function App() {
                 <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={retCash} onChange={(e) => setRetCash(Number(e.target.value))} />
               </label>
             </div>
-            <div className="text-sm text-gray-600">
-              {t.returnInfo.replace("{ret}", weightedReturnPct.toFixed(2)).replace("{inf}", Number(inflationPct).toFixed(2)).replace("{diff}", rMinusG)}
-            </div>
+            <div className="text-sm text-gray-600">{t.returnInfo.replace("{ret}", weightedReturnPct.toFixed(2)).replace("{inf}", Number(inflationPct).toFixed(2)).replace("{diff}", rMinusG)}</div>
             {nominalR <= inflationR && (
               <div className="text-sm text-red-600">{t.lowReturn}</div>
             )}
@@ -347,9 +404,11 @@ export default function App() {
 
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-white rounded-2xl shadow p-6">
-            <h2 className="text-xl font-semibold mb-2">{t.required}</h2>
-            <div className="text-3xl font-bold">{formatCurrency(neededPrincipal)}</div>
-            <p className="text-sm text-gray-600 mt-1">{t.formula}</p>
+            <h2 className="text-xl font-semibold mb-2">{mode === "years" ? t.required : t.yearsResult}</h2>
+            <div className="text-3xl font-bold">
+              {mode === "years" ? formatCurrency(neededPrincipal) : yearsSupported}
+            </div>
+            {mode === "years" && (<p className="text-sm text-gray-600 mt-1">{t.formula}</p>)}
           </div>
 
           <div className="bg-white rounded-2xl shadow p-6">
@@ -359,7 +418,7 @@ export default function App() {
                 <LineChart data={rows} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="year" tickFormatter={(v) => `Y${v}`} />
-                  <YAxis tickFormatter={(v) => `$${Math.round(Number(v)/1000)}k`} />
+                  <YAxis tickFormatter={(v) => `$${Math.round(v/1000)}k`} />
                   <Tooltip formatter={(v) => formatCurrency(Number(v))} labelFormatter={(l) => `Y${l}`} />
                   <Legend />
                   <Line type="monotone" dataKey="endPrincipal" name={t.principal} stroke="#1f77b4" dot={false} />
@@ -397,15 +456,13 @@ export default function App() {
                 </tbody>
               </table>
             </div>
-            <div className="mt-3 text-sm text-gray-700">
-              {t.balance.replace("{years}", String(years)).replace("{balance}", formatCurrency(finalBalance))}
-            </div>
+            <div className="mt-3 text-sm text-gray-700">{t.balance.replace("{years}", String(yearsSupported)).replace("{balance}", formatCurrency(finalBalance))}</div>
           </div>
 
           <div className="bg-white rounded-2xl shadow p-6">
             <h3 className="text-lg font-medium mb-2">{t.notes}</h3>
             <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
-              {t.noteList.map((n: string, i: number) => (
+              {t.noteList.map((n, i) => (
                 <li key={i}>{n}</li>
               ))}
             </ul>
