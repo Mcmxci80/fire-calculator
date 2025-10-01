@@ -1,1 +1,5 @@
-// TODO: 貼上你的 App 程式碼
+import React from "react";
+
+export default function App() {
+  return <div style={{padding: 24, fontFamily: "system-ui"}}>Build OK</div>;
+}
