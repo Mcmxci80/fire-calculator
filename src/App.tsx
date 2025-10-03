@@ -323,9 +323,13 @@ const translations = {
 
 function detectLang() {
   if (typeof navigator === "undefined") return "en";
-  const codes = Array.from(new Set([(navigator.language || "").toLowerCase(), ...(navigator.languages || []).map((x) => x.toLowerCase())]));
-  if (codes.some((c) => c.startsWith("zh-cn") || c.includes("-cn"))) return "zhcn";
-  if (codes.some((c) => c.startsWith("zh") || c.includes("-sg") || c.includes("-my"))) return "zh";
+  const codes = Array.from(new Set([
+    (navigator.language || "").toLowerCase(),
+    ...(navigator.languages || []).map((x) => x.toLowerCase())
+  ]));
+
+  if (codes.some((c) => c.startsWith("zh-cn") || c === "zh" || c.startsWith("zh-sg"))) return "zhcn";
+  if (codes.some((c) => c.startsWith("zh-tw") || c.startsWith("zh-hk") || c.startsWith("zh-mo"))) return "zh";
   if (codes.some((c) => c.startsWith("ja"))) return "ja";
   return "en";
 }
