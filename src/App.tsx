@@ -328,8 +328,13 @@ function detectLang() {
     ...(navigator.languages || []).map((x) => x.toLowerCase())
   ]));
 
-  if (codes.some((c) => c.startsWith("zh-cn") || c === "zh" || c.startsWith("zh-sg"))) return "zhcn";
-  if (codes.some((c) => c.startsWith("zh-tw") || c.startsWith("zh-hk") || c.startsWith("zh-mo"))) return "zh";
+  if (codes.some((c) =>
+    c.startsWith("zh-cn") ||
+    c.startsWith("zh-sg") ||
+    (c.startsWith("zh") && c.includes("hans"))
+  )) return "zhcn";
+
+  if (codes.some((c) => c.startsWith("zh"))) return "zh";
   if (codes.some((c) => c.startsWith("ja"))) return "ja";
   return "en";
 }
