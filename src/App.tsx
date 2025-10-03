@@ -270,13 +270,62 @@ const translations = {
       "複利モードは毎月積立・毎月複利。",
       "教育目的のみ。"
     ]
+  },
+  zhcn: {
+    title: "退休支出计算器",
+    subtitle: "输入条件 → 计算所需起始本金、可支撑年数，或复利增长。",
+    mode: "模式",
+    byYears: "输入年数",
+    byPrincipal: "输入本金",
+    byCompound: "复利计算",
+    basic: "基本参数",
+    years: "期间（年）",
+    firstExpense: "首年支出",
+    inflation: "通胀（%/年）",
+    timing: "提取时间",
+    end: "期末提取",
+    begin: "期初提取",
+    allocation: "资产配置",
+    etf: "ETF (%)",
+    bond: "债券 (%)",
+    cash: "现金 (%)",
+    warning: "⚠️ 配置加总目前为 {sum}%，请调整至 100%。",
+    return: "预期名义回报",
+    returnInfo: "加权名义回报 ≈ {ret}% (r)，通胀 g = {inf}% ，r − g = {diff}%",
+    lowReturn: "⚠️ 名义回报 ≤ 通胀，本金会更快耗尽。",
+    required: "所需起始本金",
+    yearsResult: "可支撑年数",
+    initialPrincipal: "起始本金",
+    monthly: "每月投入",
+    compoundBalance: "复利期末资产",
+    formula: "公式：PV_end = W₁ · [1 - ((1+g)/(1+r))^N] / (r - g)。期初提取乘以 (1+r)。",
+    chart: "图表",
+    table: "表格",
+    download: "下载 CSV",
+    year: "年份",
+    expense: "年度支出",
+    growth: "投资回报",
+    principal: "年末本金",
+    balance: "第 {years} 年期末预计余额：{balance}",
+    notes: "说明与假设",
+    compYears: "期间（年）",
+    compInitial: "起始本金",
+    compMonthly: "每月投入",
+    noteList: [
+      "可切换期初/期末提取。",
+      "第一年提取额等于首年支出，之后每年按通胀增长。",
+      "名义回报由配置权重加权计算。",
+      "复利模式采用每月投入、每月复利。",
+      "仅供教育用途。"
+    ]
   }
 };
 
 function detectLang() {
   if (typeof navigator === "undefined") return "en";
   const codes = Array.from(new Set([(navigator.language || "").toLowerCase(), ...(navigator.languages || []).map((x) => x.toLowerCase())]));
-  if (codes.some((c) => c.startsWith("zh") || c.includes("-cn") || c.includes("-sg") || c.includes("-my"))) return "zh";
+  if (codes.some((c) => c.startsWith("zh-cn") || c.includes("-cn"))) return "zhcn";
+  if (codes.some((c) => c.startsWith("zh") || c.includes("-sg") || c.includes("-my"))) return "zh";
   if (codes.some((c) => c.startsWith("ja"))) return "ja";
   return "en";
 }
@@ -364,6 +413,7 @@ export default function App() {
               <select value={lang} onChange={(e) => setLang(e.target.value)} className="border rounded-xl px-3 py-2 w-full sm:w-auto min-w-[140px]">
                 <option value="en">English</option>
                 <option value="zh">繁體中文</option>
+                <option value="zhcn">简体中文</option>
                 <option value="ja">日本語</option>
               </select>
             </div>
