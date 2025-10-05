@@ -87,7 +87,8 @@ function simulateUntilDepleted({ initialPrincipal, expense0, r, g, timing, maxYe
   return rows;
 }
 
-function simulateCompound({ years, principal0, monthly, r }) {
+// Updated: support both monthly and yearly contributions (year-end top-up)
+function simulateCompound({ years, principal0, monthly, yearly = 0, r }) {
   const rows = [];
   let balance = principal0;
   const monthlyRate = r / 12;
@@ -95,6 +96,8 @@ function simulateCompound({ years, principal0, monthly, r }) {
     for (let m = 1; m <= 12; m++) {
       balance = balance * (1 + monthlyRate) + monthly;
     }
+    // Year-end lump-sum contribution
+    balance = balance + yearly;
     rows.push({ year: y, expense: 0, growth: balance, endPrincipal: balance });
   }
   return rows;
@@ -119,10 +122,12 @@ function runTests() {
   console.assert(csv.split("\n").length === 3, "csv rows count");
   const esc = buildCSV([["h1","h2"],["x,y","q\"q"]]);
   console.assert(esc.includes('"x,y"') && esc.includes('"q""q"'), "csv escaping");
-  const comp = simulateCompound({ years: 2, principal0: 1000, monthly: 100, r: 0.12 });
+  const comp = simulateCompound({ years: 2, principal0: 1000, monthly: 100, yearly: 0, r: 0.12 });
   console.assert(comp.length === 2 && comp[1].endPrincipal > comp[0].endPrincipal, "compound growth");
-  const comp0 = simulateCompound({ years: 1, principal0: 0, monthly: 100, r: 0 });
+  const comp0 = simulateCompound({ years: 1, principal0: 0, monthly: 100, yearly: 0, r: 0 });
   console.assert(almostEqual(comp0[0].endPrincipal, 1200, 1e-9), "compound zero-rate");
+  const compYearlyOnly = simulateCompound({ years: 1, principal0: 0, monthly: 0, yearly: 1200, r: 0 });
+  console.assert(almostEqual(compYearlyOnly[0].endPrincipal, 1200, 1e-9), "yearly-only contribution");
   console.assert(simEnd.length === N, "rows length");
 }
 
@@ -167,11 +172,12 @@ const translations = {
     compYears: "Years",
     compInitial: "Initial Principal",
     compMonthly: "Monthly Contribution",
+    compYearly: "Yearly Contribution",
     noteList: [
       "Toggle beginning/end withdrawals.",
       "First year withdrawal = first expense, grows by g annually.",
       "Nominal return r from allocation weights.",
-      "Compound assumes monthly contributions and monthly compounding.",
+      "Compound assumes monthly contributions and monthly compounding; yearly adds a lump sum at year-end.",
       "Educational use only."
     ]
   },
@@ -213,13 +219,14 @@ const translations = {
     balance: "第 {years} 年期末預估餘額：{balance}",
     notes: "說明與假設",
     compYears: "期間（年）",
-    compInitial: "起始本金",
+    compInitial: "初始本金",
     compMonthly: "每月投入",
+    compYearly: "每年投入",
     noteList: [
       "可切換期初/期末提領。",
       "第一年提領額等於首年支出，之後每年按通膨成長。",
       "名目報酬由配置權重加權計算。",
-      "複利模式採每月投入、每月複利。",
+      "複利模式採每月投入、每月複利；另於年末一次性加上每年投入。",
       "僅供教育用途。"
     ]
   },
@@ -263,11 +270,12 @@ const translations = {
     compYears: "期間（年）",
     compInitial: "初期元本",
     compMonthly: "毎月の積立",
+    compYearly: "毎年の積立",
     noteList: [
       "期首/期末の切り替え。",
       "初年度支出は入力額、以降はインフレで成長。",
       "名目収益率は配分の加重平均。",
-      "複利モードは毎月積立・毎月複利。",
+      "複利モードは毎月積立・毎月複利に加え、年末に毎年の積立を加算。",
       "教育目的のみ。"
     ]
   },
@@ -311,11 +319,12 @@ const translations = {
     compYears: "期间（年）",
     compInitial: "起始本金",
     compMonthly: "每月投入",
+    compYearly: "每年投入",
     noteList: [
       "可切换期初/期末提取。",
       "第一年提取额等于首年支出，之后每年按通胀增长。",
       "名义回报由配置权重加权计算。",
-      "复利模式采用每月投入、每月复利。",
+      "复利模式采用每月投入、每月复利；另在年末加一次每年投入。",
       "仅供教育用途。"
     ]
   }
@@ -357,6 +366,7 @@ export default function App() {
   const [compYears, setCompYears] = useState(30);
   const [compInitial, setCompInitial] = useState(10000);
   const [compMonthly, setCompMonthly] = useState(500);
+  const [compYearly, setCompYearly] = useState(0); // new yearly contribution
 
   const t = translations[lang];
   const allocSum = toPct(pctETF) + toPct(pctBond) + toPct(pctCash);
@@ -394,8 +404,8 @@ export default function App() {
 
   const rowsCompound = useMemo(() => {
     if (mode !== "compound") return [];
-    return simulateCompound({ years: Number(compYears), principal0: Number(compInitial), monthly: Number(compMonthly), r: nominalR });
-  }, [mode, compYears, compInitial, compMonthly, nominalR]);
+    return simulateCompound({ years: Number(compYears), principal0: Number(compInitial), monthly: Number(compMonthly), yearly: Number(compYearly), r: nominalR });
+  }, [mode, compYears, compInitial, compMonthly, compYearly, nominalR]);
 
   const rows = mode === "years" ? rowsYears : mode === "principal" ? rowsPrincipal : rowsCompound;
   const finalBalance = rows.length ? rows[rows.length - 1].endPrincipal : 0;
@@ -458,6 +468,9 @@ export default function App() {
                 </label>
                 <label className="text-sm">{t.compMonthly}
                   <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(compMonthly) ? compMonthly : 0} onChange={(e) => setCompMonthly(nval(e.target.value, 0))} />
+                </label>
+                <label className="text-sm">{t.compYearly}
+                  <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(compYearly) ? compYearly : 0} onChange={(e) => setCompYearly(nval(e.target.value, 0))} />
                 </label>
               </div>
             ) : (
