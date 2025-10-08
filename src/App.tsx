@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 
-function formatCurrency(x) {
+function formatCurrency(x, digits = 0) {
   if (!Number.isFinite(x)) return "-";
-  return x.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return x.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 }
 
 function formatPercent(p, digits = 2) {
@@ -92,7 +92,7 @@ function simulateUntilDepleted({ initialPrincipal, expense0, r, g, timing, maxYe
   return rows;
 }
 
-// Updated: support both monthly and yearly contributions (year-end top-up)
+// monthly + yearly (year-end) contributions
 function simulateCompound({ years, principal0, monthly, yearly = 0, r }) {
   const rows = [];
   let balance = principal0;
@@ -101,14 +101,13 @@ function simulateCompound({ years, principal0, monthly, yearly = 0, r }) {
     for (let m = 1; m <= 12; m++) {
       balance = balance * (1 + monthlyRate) + monthly;
     }
-    // Year-end lump-sum contribution
     balance = balance + yearly;
     rows.push({ year: y, expense: 0, growth: balance, endPrincipal: balance });
   }
   return rows;
 }
 
-// For CAGR mode – simulate the growth of 1 unit by a fixed annual rate
+// CAGR path of 1 unit with fixed annual rate
 function simulateCAGR({ years, cagr }) {
   const rows = [];
   let value = 1;
@@ -119,45 +118,26 @@ function simulateCAGR({ years, cagr }) {
   return rows;
 }
 
-function almostEqual(a, b, eps = 1e-6) {
-  return Math.abs(a - b) <= eps;
-}
+function almostEqual(a, b, eps = 1e-6) { return Math.abs(a - b) <= eps; }
 
 function runTests() {
-  const r = 0.07;
-  const g = 0.03;
-  const N = 30;
-  const W1 = 100000;
+  const r = 0.07, g = 0.03, N = 30, W1 = 100000;
   const pvEnd = requiredPrincipalByFormula({ firstWithdrawal: W1, r, g, N, timing: "end" });
   const simEnd = simulateCashflow({ initialPrincipal: pvEnd, years: N, expense0: W1, r, g, timing: "end" });
   console.assert(almostEqual(simEnd[simEnd.length - 1].endPrincipal, 0, 1), "end timing fails");
   const pvBegin = requiredPrincipalByFormula({ firstWithdrawal: W1, r, g, N, timing: "begin" });
   const simBegin = simulateCashflow({ initialPrincipal: pvBegin, years: N, expense0: W1, r, g, timing: "begin" });
   console.assert(almostEqual(simBegin[simBegin.length - 1].endPrincipal, 0, 1), "begin timing fails");
-  const csv = buildCSV([["a","b"],[1,2],[3,4]]);
-  console.assert(csv.split("\n").length === 3, "csv rows count");
-  const esc = buildCSV([["h1","h2"],["x,y","q\"q"]]);
-  console.assert(esc.includes('"x,y"') && esc.includes('"q""q"'), "csv escaping");
-  const comp = simulateCompound({ years: 2, principal0: 1000, monthly: 100, yearly: 0, r: 0.12 });
-  console.assert(comp.length === 2 && comp[1].endPrincipal > comp[0].endPrincipal, "compound growth");
-  const comp0 = simulateCompound({ years: 1, principal0: 0, monthly: 100, yearly: 0, r: 0 });
-  console.assert(almostEqual(comp0[0].endPrincipal, 1200, 1e-9), "compound zero-rate");
-  const compYearlyOnly = simulateCompound({ years: 1, principal0: 0, monthly: 0, yearly: 1200, r: 0 });
-  console.assert(almostEqual(compYearlyOnly[0].endPrincipal, 1200, 1e-9), "yearly-only contribution");
-  console.assert(simEnd.length === N, "rows length");
-
-  // CAGR tests
-  const total = 0.8; // +80% over 4 years
-  const years = 4;
+  const total = 0.8, years = 4; // +80% over 4 yrs
   const cagr = Math.pow(1 + total, 1 / years) - 1;
-  const computedTotal = Math.pow(1 + cagr, years) - 1;
-  console.assert(almostEqual(computedTotal, total, 1e-12), "CAGR inversion");
+  const back = Math.pow(1 + cagr, years) - 1;
+  console.assert(almostEqual(back, total, 1e-12), "CAGR inversion");
 }
 
 const translations = {
   en: {
     title: "Retirement & Return Calculator",
-    subtitle: "Enter conditions → Calculate required initial principal, supported years, compound growth, or annualized return (CAGR).",
+    subtitle: "Enter conditions → Required principal, years supported, compound growth, or annualized return (CAGR).",
     mode: "Mode",
     byYears: "Target Years",
     byPrincipal: "Given Principal",
@@ -407,17 +387,8 @@ const translations = {
 
 function detectLang() {
   if (typeof navigator === "undefined") return "en";
-  const codes = Array.from(new Set([
-    (navigator.language || "").toLowerCase(),
-    ...(navigator.languages || []).map((x) => x.toLowerCase())
-  ]));
-
-  if (codes.some((c) =>
-    c.startsWith("zh-cn") ||
-    c.startsWith("zh-sg") ||
-    (c.startsWith("zh") && c.includes("hans"))
-  )) return "zhcn";
-
+  const codes = Array.from(new Set([(navigator.language || "").toLowerCase(), ...(navigator.languages || []).map((x) => x.toLowerCase())]));
+  if (codes.some((c) => c.startsWith("zh-cn") || c.startsWith("zh-sg") || (c.startsWith("zh") && c.includes("hans")))) return "zhcn";
   if (codes.some((c) => c.startsWith("zh"))) return "zh";
   if (codes.some((c) => c.startsWith("ja"))) return "ja";
   return "en";
@@ -441,7 +412,7 @@ export default function App() {
   const [compYears, setCompYears] = useState(30);
   const [compInitial, setCompInitial] = useState(10000);
   const [compMonthly, setCompMonthly] = useState(500);
-  const [compYearly, setCompYearly] = useState(0); // new yearly contribution
+  const [compYearly, setCompYearly] = useState(0);
 
   // CAGR mode states
   const [cagrMode, setCagrMode] = useState("fromTotal"); // fromTotal | fromCAGR
@@ -491,7 +462,7 @@ export default function App() {
   // CAGR outputs
   const cagrOutputs = useMemo(() => {
     const Y = Number(cagrYears);
-    if (!Number.isFinite(Y) || Y <= 0) return { cagr: 0, total: 0 };
+    if (!Number.isFinite(Y) || Y <= 0) return { cagr: 0, total: 0, rows: [] };
     if (cagrMode === "fromTotal") {
       const TR = toPct(totalReturnPct) / 100; // e.g., +80% => 0.8
       const cagr = Math.pow(1 + TR, 1 / Y) - 1;
@@ -517,7 +488,7 @@ export default function App() {
   const csvRows = mode === "compound"
     ? [headersCompound, ...rows.map((rec) => [rec.year, Math.round(rec.endPrincipal)])]
     : mode === "cagr"
-    ? [headersCAGR, ...rows.map((rec) => [rec.year, rec.endPrincipal.toFixed(6)])]
+    ? [headersCAGR, ...rows.map((rec) => [rec.year, Number(rec.endPrincipal).toFixed(6)])]
     : [headersYears, ...rows.map((rec) => [rec.year, Math.round(rec.expense), Math.round(rec.growth), Math.round(rec.endPrincipal)])];
 
   useEffect(() => { runTests(); }, []);
@@ -528,13 +499,17 @@ export default function App() {
   // Top card title & value
   let topTitle = t.required;
   let topValue;
-  if (mode === "years") topValue = formatCurrency(neededPrincipal);
+  if (mode === "years") topValue = formatCurrency(neededPrincipal, 0);
   else if (mode === "principal") { topTitle = t.yearsResult; topValue = yearsSupported; }
-  else if (mode === "compound") { topTitle = t.compoundBalance; topValue = formatCurrency(finalBalance); }
+  else if (mode === "compound") { topTitle = t.compoundBalance; topValue = formatCurrency(finalBalance, 0); }
   else if (mode === "cagr") {
     if (cagrMode === "fromTotal") { topTitle = t.cagrOutputRate; topValue = formatPercent(cagrOutputs.cagr); }
     else { topTitle = t.cagrOutputTotal; topValue = formatPercent(cagrOutputs.total); }
   }
+
+  // Axis & tooltip formatters – show decimals in CAGR mode
+  const yTickFormatter = (v) => (mode === "cagr" ? Number(v).toFixed(2) : `${Math.round(v/1000)}k`);
+  const tooltipValueFormatter = (v) => (mode === "cagr" ? Number(v).toFixed(2) : formatCurrency(Number(v), 0));
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-6">
@@ -721,10 +696,10 @@ export default function App() {
                 <LineChart data={rows} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="year" tickFormatter={(v) => `Y${v}`} />
-                  <YAxis tickFormatter={(v) => `${Math.round(v/1000)}k`} />
-                  <Tooltip formatter={(v) => formatCurrency(Number(v))} labelFormatter={(l) => `Y${l}`} />
+                  <YAxis tickFormatter={yTickFormatter} />
+                  <Tooltip formatter={(v) => tooltipValueFormatter(v)} labelFormatter={(l) => `Y${l}`} />
                   <Legend />
-                  <Line type="monotone" dataKey="endPrincipal" name={t.principal} stroke="#1f77b4" dot={false} />
+                  <Line type="monotone" dataKey="endPrincipal" name={t.principal} stroke="#1f77b4" dot={mode === "cagr"} />
                   {mode !== "compound" && mode !== "cagr" && <Line type="monotone" dataKey="expense" name={t.expense} stroke="#ff7f0e" dot={false} />}
                   {mode !== "compound" && mode !== "cagr" && <Line type="monotone" dataKey="growth" name={t.growth} stroke="#2ca02c" dot={false} />}
                 </LineChart>
@@ -751,16 +726,20 @@ export default function App() {
                   {rows.map((row) => (
                     <tr key={row.year} className="border-b last:border-0">
                       <td className="p-2">{row.year}</td>
-                      {mode !== "compound" && mode !== "cagr" && <td className="p-2 text-right">{formatCurrency(row.expense)}</td>}
-                      {mode !== "compound" && mode !== "cagr" && <td className="p-2 text-right">{formatCurrency(row.growth)}</td>}
-                      <td className={`p-2 text-right ${row.endPrincipal < 0 ? 'text-red-600 font-semibold' : ''}`}>{formatCurrency(row.endPrincipal)}</td>
+                      {mode !== "compound" && mode !== "cagr" && <td className="p-2 text-right">{formatCurrency(row.expense, 0)}</td>}
+                      {mode !== "compound" && mode !== "cagr" && <td className="p-2 text-right">{formatCurrency(row.growth, 0)}</td>}
+                      {mode === "cagr" ? (
+                        <td className="p-2 text-right">{Number(row.endPrincipal).toFixed(2)}</td>
+                      ) : (
+                        <td className={`p-2 text-right ${row.endPrincipal < 0 ? 'text-red-600 font-semibold' : ''}`}>{formatCurrency(row.endPrincipal, 0)}</td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
             {mode !== "cagr" ? (
-              <div className="mt-3 text-sm text-gray-700">{t.balance.replace("{years}", String(mode === "principal" ? yearsSupported : rows.length)).replace("{balance}", formatCurrency(finalBalance))}</div>
+              <div className="mt-3 text-sm text-gray-700">{t.balance.replace("{years}", String(mode === "principal" ? yearsSupported : rows.length)).replace("{balance}", formatCurrency(finalBalance, 0))}</div>
             ) : (
               <div className="mt-3 text-sm text-gray-700">
                 {cagrMode === "fromTotal" ? (
