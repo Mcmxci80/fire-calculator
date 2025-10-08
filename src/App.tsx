@@ -6,6 +6,11 @@ function formatCurrency(x) {
   return x.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
+function formatPercent(p, digits = 2) {
+  if (!Number.isFinite(p)) return "-";
+  return `${(p * 100).toFixed(digits)}%`;
+}
+
 function toPct(x) {
   if (x === "" || x === null || x === undefined) return 0;
   const n = Number(x);
@@ -103,6 +108,17 @@ function simulateCompound({ years, principal0, monthly, yearly = 0, r }) {
   return rows;
 }
 
+// For CAGR mode – simulate the growth of 1 unit by a fixed annual rate
+function simulateCAGR({ years, cagr }) {
+  const rows = [];
+  let value = 1;
+  for (let y = 1; y <= years; y++) {
+    value = value * (1 + cagr);
+    rows.push({ year: y, endPrincipal: value });
+  }
+  return rows;
+}
+
 function almostEqual(a, b, eps = 1e-6) {
   return Math.abs(a - b) <= eps;
 }
@@ -129,18 +145,33 @@ function runTests() {
   const compYearlyOnly = simulateCompound({ years: 1, principal0: 0, monthly: 0, yearly: 1200, r: 0 });
   console.assert(almostEqual(compYearlyOnly[0].endPrincipal, 1200, 1e-9), "yearly-only contribution");
   console.assert(simEnd.length === N, "rows length");
+
+  // CAGR tests
+  const total = 0.8; // +80% over 4 years
+  const years = 4;
+  const cagr = Math.pow(1 + total, 1 / years) - 1;
+  const computedTotal = Math.pow(1 + cagr, years) - 1;
+  console.assert(almostEqual(computedTotal, total, 1e-12), "CAGR inversion");
 }
 
 const translations = {
   en: {
-    title: "Retirement Expense Calculator",
-    subtitle: "Enter conditions → Calculate required initial principal, supported years, or compound growth.",
+    title: "Retirement & Return Calculator",
+    subtitle: "Enter conditions → Calculate required initial principal, supported years, compound growth, or annualized return (CAGR).",
     mode: "Mode",
     byYears: "Target Years",
     byPrincipal: "Given Principal",
     byCompound: "Compound",
-    basic: "Basic Parameters",
+    byCAGR: "CAGR / Total Return",
+    cagrTitle: "Annualized Return (CAGR) Tools",
+    cagrHow: "Choose a method",
+    cagrFromTotal: "Given total return & years → CAGR",
+    cagrFromCAGR: "Given CAGR & years → total return",
     years: "Years",
+    totalReturnPct: "Total Return (%)",
+    cagrPct: "CAGR (%/yr)",
+
+    basic: "Basic Parameters",
     firstExpense: "First Year Expense",
     inflation: "Inflation (%/yr)",
     timing: "Withdrawal Timing",
@@ -159,7 +190,11 @@ const translations = {
     initialPrincipal: "Initial Principal",
     monthly: "Monthly Contribution",
     compoundBalance: "Compound Final Balance",
+    cagrOutputRate: "CAGR Result",
+    cagrOutputTotal: "Total Return Result",
     formula: "Formula: PV_end = W₁ · [1 - ((1+g)/(1+r))^N] / (r - g). Beginning withdrawals multiply by (1+r).",
+    cagrFormula1: "CAGR = (1 + TotalReturn)^(1/Years) − 1",
+    cagrFormula2: "TotalReturn = (1 + CAGR)^Years − 1",
     chart: "Chart",
     table: "Table",
     download: "Download CSV",
@@ -178,18 +213,27 @@ const translations = {
       "First year withdrawal = first expense, grows by g annually.",
       "Nominal return r from allocation weights.",
       "Compound assumes monthly contributions and monthly compounding; yearly adds a lump sum at year-end.",
+      "CAGR tools use simple annual compounding (no cash flows).",
       "Educational use only."
     ]
   },
   zh: {
-    title: "退休支出試算器",
-    subtitle: "輸入條件 → 計算所需起始本金、可支撐年數，或複利成長。",
+    title: "退休與報酬率試算器",
+    subtitle: "輸入條件 → 計算所需起始本金、可支撐年數、複利成長，或年化報酬（CAGR）。",
     mode: "模式",
     byYears: "輸入年數",
     byPrincipal: "輸入本金",
     byCompound: "複利計算",
-    basic: "基本參數",
+    byCAGR: "年化/總報酬",
+    cagrTitle: "年化報酬（CAGR）工具",
+    cagrHow: "選擇方式",
+    cagrFromTotal: "輸入總報酬與年數 → 求年化",
+    cagrFromCAGR: "輸入年化與年數 → 求總報酬",
     years: "期間（年）",
+    totalReturnPct: "總報酬（%）",
+    cagrPct: "年化報酬（%/年）",
+
+    basic: "基本參數",
     firstExpense: "首年支出",
     inflation: "通膨（%/年）",
     timing: "提領時點",
@@ -202,13 +246,17 @@ const translations = {
     warning: "⚠️ 配置加總目前為 {sum}%，請調整至 100%。",
     return: "預期名目報酬",
     returnInfo: "加權名目報酬 ≈ {ret}% (r)，通膨 g = {inf}% ，r − g = {diff}%",
-    lowReturn: "⚠️ 名目報酬 ≤ 通膨，理論上本金會加速耗盡。",
+    lowReturn: "⚠️ 名目報酬 ≤ 通膨，本金會加速耗盡。",
     required: "所需起始本金",
     yearsResult: "可支撐年數",
     initialPrincipal: "起始本金",
     monthly: "每月投入",
     compoundBalance: "複利期末資產",
+    cagrOutputRate: "年化報酬結果",
+    cagrOutputTotal: "總報酬結果",
     formula: "公式：PV_end = W₁ · [1 - ((1+g)/(1+r))^N] / (r - g)。期初提領乘以 (1+r)。",
+    cagrFormula1: "年化＝(1+總報酬)^(1/年數) − 1",
+    cagrFormula2: "總報酬＝(1+年化)^年數 − 1",
     chart: "圖表",
     table: "表格",
     download: "下載 CSV",
@@ -227,18 +275,27 @@ const translations = {
       "第一年提領額等於首年支出，之後每年按通膨成長。",
       "名目報酬由配置權重加權計算。",
       "複利模式採每月投入、每月複利；另於年末一次性加上每年投入。",
+      "CAGR 工具假設無現金流、單純年度複利。",
       "僅供教育用途。"
     ]
   },
   ja: {
-    title: "退職支出シミュレーター",
-    subtitle: "条件を入力 → 必要元本、使用可能年数、または複利成長を計算。",
+    title: "退職 & リターン計算ツール",
+    subtitle: "必要元本・使用可能年数・複利成長・CAGR（年率）を計算。",
     mode: "モード",
     byYears: "年数を指定",
     byPrincipal: "元本を指定",
     byCompound: "複利",
-    basic: "基本パラメータ",
+    byCAGR: "CAGR / 総リターン",
+    cagrTitle: "CAGR（年率）ツール",
+    cagrHow: "方法を選択",
+    cagrFromTotal: "総リターンと年数 → CAGR",
+    cagrFromCAGR: "CAGRと年数 → 総リターン",
     years: "期間（年）",
+    totalReturnPct: "総リターン（%）",
+    cagrPct: "CAGR（%/年）",
+
+    basic: "基本パラメータ",
     firstExpense: "初年度支出",
     inflation: "インフレ率（%/年）",
     timing: "引き出しタイミング",
@@ -256,8 +313,12 @@ const translations = {
     yearsResult: "使用可能年数",
     initialPrincipal: "初期元本",
     monthly: "毎月の積立",
-    compoundBalance: "複利期末資產",
+    compoundBalance: "複利期末資産",
+    cagrOutputRate: "CAGR 結果",
+    cagrOutputTotal: "総リターン結果",
     formula: "式: PV_end = W₁ · [1 - ((1+g)/(1+r))^N] / (r - g)。期首は (1+r) を乗じる。",
+    cagrFormula1: "CAGR = (1 + 総リターン)^(1/年数) − 1",
+    cagrFormula2: "総リターン = (1 + CAGR)^年数 − 1",
     chart: "グラフ",
     table: "テーブル",
     download: "CSV ダウンロード",
@@ -276,18 +337,27 @@ const translations = {
       "初年度支出は入力額、以降はインフレで成長。",
       "名目収益率は配分の加重平均。",
       "複利モードは毎月積立・毎月複利に加え、年末に毎年の積立を加算。",
+      "CAGR ツールはキャッシュフローなしの単純年次複利。",
       "教育目的のみ。"
     ]
   },
   zhcn: {
-    title: "退休支出计算器",
-    subtitle: "输入条件 → 计算所需起始本金、可支撑年数，或复利增长。",
+    title: "退休与回报率计算器",
+    subtitle: "输入条件 → 计算所需起始本金、可支撑年数、复利增长或年化回报（CAGR）。",
     mode: "模式",
     byYears: "输入年数",
     byPrincipal: "输入本金",
     byCompound: "复利计算",
-    basic: "基本参数",
+    byCAGR: "年化/总回报",
+    cagrTitle: "年化回报（CAGR）工具",
+    cagrHow: "选择方式",
+    cagrFromTotal: "输入总回报与年数 → 求年化",
+    cagrFromCAGR: "输入年化与年数 → 求总回报",
     years: "期间（年）",
+    totalReturnPct: "总回报（%）",
+    cagrPct: "年化回报（%/年）",
+
+    basic: "基本参数",
     firstExpense: "首年支出",
     inflation: "通胀（%/年）",
     timing: "提取时间",
@@ -306,7 +376,11 @@ const translations = {
     initialPrincipal: "起始本金",
     monthly: "每月投入",
     compoundBalance: "复利期末资产",
+    cagrOutputRate: "年化回报结果",
+    cagrOutputTotal: "总回报结果",
     formula: "公式：PV_end = W₁ · [1 - ((1+g)/(1+r))^N] / (r - g)。期初提取乘以 (1+r)。",
+    cagrFormula1: "年化＝(1+总回报)^(1/年数) − 1",
+    cagrFormula2: "总回报＝(1+年化)^年数 − 1",
     chart: "图表",
     table: "表格",
     download: "下载 CSV",
@@ -325,6 +399,7 @@ const translations = {
       "第一年提取额等于首年支出，之后每年按通胀增长。",
       "名义回报由配置权重加权计算。",
       "复利模式采用每月投入、每月复利；另在年末加一次每年投入。",
+      "CAGR 工具假设无现金流、按年复利。",
       "仅供教育用途。"
     ]
   }
@@ -368,6 +443,12 @@ export default function App() {
   const [compMonthly, setCompMonthly] = useState(500);
   const [compYearly, setCompYearly] = useState(0); // new yearly contribution
 
+  // CAGR mode states
+  const [cagrMode, setCagrMode] = useState("fromTotal"); // fromTotal | fromCAGR
+  const [cagrYears, setCagrYears] = useState(4);
+  const [totalReturnPct, setTotalReturnPct] = useState(80); // e.g., +80% total
+  const [cagrPct, setCagrPct] = useState(15); // e.g., 15%/yr
+
   const t = translations[lang];
   const allocSum = toPct(pctETF) + toPct(pctBond) + toPct(pctCash);
   const allocWarn = Math.abs(allocSum - 100) > 0.001;
@@ -407,20 +488,53 @@ export default function App() {
     return simulateCompound({ years: Number(compYears), principal0: Number(compInitial), monthly: Number(compMonthly), yearly: Number(compYearly), r: nominalR });
   }, [mode, compYears, compInitial, compMonthly, compYearly, nominalR]);
 
-  const rows = mode === "years" ? rowsYears : mode === "principal" ? rowsPrincipal : rowsCompound;
+  // CAGR outputs
+  const cagrOutputs = useMemo(() => {
+    const Y = Number(cagrYears);
+    if (!Number.isFinite(Y) || Y <= 0) return { cagr: 0, total: 0 };
+    if (cagrMode === "fromTotal") {
+      const TR = toPct(totalReturnPct) / 100; // e.g., +80% => 0.8
+      const cagr = Math.pow(1 + TR, 1 / Y) - 1;
+      const rows = simulateCAGR({ years: Y, cagr });
+      return { cagr, total: TR, rows };
+    } else {
+      const c = toPct(cagrPct) / 100; // e.g., 15% => 0.15
+      const total = Math.pow(1 + c, Y) - 1;
+      const rows = simulateCAGR({ years: Y, cagr: c });
+      return { cagr: c, total, rows };
+    }
+  }, [cagrMode, cagrYears, totalReturnPct, cagrPct]);
+
+  const rowsCAGR = mode === "cagr" ? (cagrOutputs.rows || []) : [];
+
+  const rows = mode === "years" ? rowsYears : mode === "principal" ? rowsPrincipal : mode === "compound" ? rowsCompound : rowsCAGR;
   const finalBalance = rows.length ? rows[rows.length - 1].endPrincipal : 0;
   const rMinusG = (weightedReturnPct - toPct(inflationPct)).toFixed(2);
 
   const headersYears = [t.year, t.expense, t.growth, t.principal];
   const headersCompound = [t.year, t.principal];
+  const headersCAGR = [t.year, t.principal];
   const csvRows = mode === "compound"
     ? [headersCompound, ...rows.map((rec) => [rec.year, Math.round(rec.endPrincipal)])]
+    : mode === "cagr"
+    ? [headersCAGR, ...rows.map((rec) => [rec.year, rec.endPrincipal.toFixed(6)])]
     : [headersYears, ...rows.map((rec) => [rec.year, Math.round(rec.expense), Math.round(rec.growth), Math.round(rec.endPrincipal)])];
 
   useEffect(() => { runTests(); }, []);
   useEffect(() => { setLang(detectLang()); }, []);
 
   const yearsSupported = mode === "principal" ? rowsPrincipal.length : Number(years);
+
+  // Top card title & value
+  let topTitle = t.required;
+  let topValue;
+  if (mode === "years") topValue = formatCurrency(neededPrincipal);
+  else if (mode === "principal") { topTitle = t.yearsResult; topValue = yearsSupported; }
+  else if (mode === "compound") { topTitle = t.compoundBalance; topValue = formatCurrency(finalBalance); }
+  else if (mode === "cagr") {
+    if (cagrMode === "fromTotal") { topTitle = t.cagrOutputRate; topValue = formatPercent(cagrOutputs.cagr); }
+    else { topTitle = t.cagrOutputTotal; topValue = formatPercent(cagrOutputs.total); }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-6">
@@ -452,108 +566,152 @@ export default function App() {
                 <label className="inline-flex items-center gap-2">
                   <input type="radio" name="mode" value="compound" checked={mode === "compound"} onChange={() => setMode("compound")} /> {t.byCompound}
                 </label>
+                <label className="inline-flex items-center gap-2">
+                  <input type="radio" name="mode" value="cagr" checked={mode === "cagr"} onChange={() => setMode("cagr")} /> {t.byCAGR}
+                </label>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow p-5 space-y-4">
-            <h2 className="text-lg font-medium">{t.basic}</h2>
-            {mode === "compound" ? (
-              <div className="grid grid-cols-2 gap-3">
-                <label className="text-sm">{t.compYears}
-                  <input type="number" min={1} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(compYears) ? compYears : 0} onChange={(e) => setCompYears(nval(e.target.value, 0))} />
-                </label>
-                <label className="text-sm">{t.compInitial}
-                  <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(compInitial) ? compInitial : 0} onChange={(e) => setCompInitial(nval(e.target.value, 0))} />
-                </label>
-                <label className="text-sm">{t.compMonthly}
-                  <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(compMonthly) ? compMonthly : 0} onChange={(e) => setCompMonthly(nval(e.target.value, 0))} />
-                </label>
-                <label className="text-sm">{t.compYearly}
-                  <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(compYearly) ? compYearly : 0} onChange={(e) => setCompYearly(nval(e.target.value, 0))} />
-                </label>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                {mode === "years" ? (
-                  <label className="text-sm">{t.years}
-                    <input type="number" min={1} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(years) ? years : 0} onChange={(e) => setYears(nval(e.target.value, 0))} />
-                  </label>
-                ) : (
-                  <label className="text-sm">{t.initialPrincipal}
-                    <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(initialPrincipalInput) ? initialPrincipalInput : 0} onChange={(e) => setInitialPrincipalInput(nval(e.target.value, 0))} />
-                  </label>
-                )}
-                <label className="text-sm">{t.firstExpense}
-                  <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(annualExpense) ? annualExpense : 0} onChange={(e) => setAnnualExpense(nval(e.target.value, 0))} />
-                </label>
-                <label className="text-sm">{t.inflation}
-                  <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(inflationPct) ? inflationPct : 0} onChange={(e) => setInflationPct(nval(e.target.value, 0))} />
-                </label>
-              </div>
-            )}
-            {mode !== "compound" && (
-              <div className="mt-2 text-sm">
-                <div className="font-medium mb-1">{t.timing}</div>
+          {/* Basic parameter panel or CAGR panel */}
+          {mode === "cagr" ? (
+            <div className="bg-white rounded-2xl shadow p-5 space-y-4">
+              <h2 className="text-lg font-medium">{t.cagrTitle}</h2>
+              <div className="text-sm">
+                <div className="font-medium mb-1">{t.cagrHow}</div>
                 <div className="flex items-center gap-4">
                   <label className="inline-flex items-center gap-2">
-                    <input type="radio" name="timing" value="end" checked={timing === "end"} onChange={() => setTiming("end")} /> {t.end}
+                    <input type="radio" name="cagrMode" value="fromTotal" checked={cagrMode === "fromTotal"} onChange={() => setCagrMode("fromTotal")} /> {t.cagrFromTotal}
                   </label>
                   <label className="inline-flex items-center gap-2">
-                    <input type="radio" name="timing" value="begin" checked={timing === "begin"} onChange={() => setTiming("begin")} /> {t.begin}
+                    <input type="radio" name="cagrMode" value="fromCAGR" checked={cagrMode === "fromCAGR"} onChange={() => setCagrMode("fromCAGR")} /> {t.cagrFromCAGR}
                   </label>
                 </div>
               </div>
-            )}
-          </div>
-
-          <div className="bg-white rounded-2xl shadow p-5 space-y-4">
-            <h2 className="text-lg font-medium">{t.allocation}</h2>
-            <div className="grid grid-cols-3 gap-3">
-              <label className="text-sm">{t.etf}
-                <input type="number" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(pctETF) ? pctETF : 0} onChange={(e) => setPctETF(nval(e.target.value, 0))} />
-              </label>
-              <label className="text-sm">{t.bond}
-                <input type="number" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(pctBond) ? pctBond : 0} onChange={(e) => setPctBond(nval(e.target.value, 0))} />
-              </label>
-              <label className="text-sm">{t.cash}
-                <input type="number" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(pctCash) ? pctCash : 0} onChange={(e) => setPctCash(nval(e.target.value, 0))} />
-              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm">{t.years}
+                  <input type="number" min={1} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(cagrYears) ? cagrYears : 0} onChange={(e) => setCagrYears(nval(e.target.value, 0))} />
+                </label>
+                {cagrMode === "fromTotal" ? (
+                  <label className="text-sm">{t.totalReturnPct}
+                    <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(totalReturnPct) ? totalReturnPct : 0} onChange={(e) => setTotalReturnPct(nval(e.target.value, 0))} />
+                  </label>
+                ) : (
+                  <label className="text-sm">{t.cagrPct}
+                    <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(cagrPct) ? cagrPct : 0} onChange={(e) => setCagrPct(nval(e.target.value, 0))} />
+                  </label>
+                )}
+              </div>
+              <div className="text-xs text-gray-600">
+                <div>• {t.cagrFormula1}</div>
+                <div>• {t.cagrFormula2}</div>
+              </div>
             </div>
-            {allocWarn && (
-              <p className="text-sm text-amber-600">{t.warning.replace("{sum}", allocSum.toFixed(1))}</p>
-            )}
-          </div>
-
-          <div className="bg-white rounded-2xl shadow p-5 space-y-4">
-            <h2 className="text-lg font-medium">{t["return"]}</h2>
-            <div className="grid grid-cols-3 gap-3">
-              <label className="text-sm">ETF (%)
-                <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(retETF) ? retETF : 0} onChange={(e) => setRetETF(nval(e.target.value, 0))} />
-              </label>
-              <label className="text-sm">Bond (%)
-                <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(retBond) ? retBond : 0} onChange={(e) => setRetBond(nval(e.target.value, 0))} />
-              </label>
-              <label className="text-sm">Cash (%)
-                <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(retCash) ? retCash : 0} onChange={(e) => setRetCash(nval(e.target.value, 0))} />
-              </label>
+          ) : (
+            <div className="bg-white rounded-2xl shadow p-5 space-y-4">
+              <h2 className="text-lg font-medium">{t.basic}</h2>
+              {mode === "compound" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="text-sm">{t.compYears}
+                    <input type="number" min={1} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(compYears) ? compYears : 0} onChange={(e) => setCompYears(nval(e.target.value, 0))} />
+                  </label>
+                  <label className="text-sm">{t.compInitial}
+                    <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(compInitial) ? compInitial : 0} onChange={(e) => setCompInitial(nval(e.target.value, 0))} />
+                  </label>
+                  <label className="text-sm">{t.compMonthly}
+                    <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(compMonthly) ? compMonthly : 0} onChange={(e) => setCompMonthly(nval(e.target.value, 0))} />
+                  </label>
+                  <label className="text-sm">{t.compYearly}
+                    <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(compYearly) ? compYearly : 0} onChange={(e) => setCompYearly(nval(e.target.value, 0))} />
+                  </label>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {mode === "years" ? (
+                    <label className="text-sm">{t.years}
+                      <input type="number" min={1} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(years) ? years : 0} onChange={(e) => setYears(nval(e.target.value, 0))} />
+                    </label>
+                  ) : (
+                    <label className="text-sm">{t.initialPrincipal}
+                      <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(initialPrincipalInput) ? initialPrincipalInput : 0} onChange={(e) => setInitialPrincipalInput(nval(e.target.value, 0))} />
+                    </label>
+                  )}
+                  <label className="text-sm">{t.firstExpense}
+                    <input type="number" min={0} className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(annualExpense) ? annualExpense : 0} onChange={(e) => setAnnualExpense(nval(e.target.value, 0))} />
+                  </label>
+                  <label className="text-sm">{t.inflation}
+                    <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(inflationPct) ? inflationPct : 0} onChange={(e) => setInflationPct(nval(e.target.value, 0))} />
+                  </label>
+                </div>
+              )}
+              {mode !== "compound" && mode !== "cagr" && (
+                <div className="mt-2 text-sm">
+                  <div className="font-medium mb-1">{t.timing}</div>
+                  <div className="flex items-center gap-4">
+                    <label className="inline-flex items-center gap-2">
+                      <input type="radio" name="timing" value="end" checked={timing === "end"} onChange={() => setTiming("end")} /> {t.end}
+                    </label>
+                    <label className="inline-flex items-center gap-2">
+                      <input type="radio" name="timing" value="begin" checked={timing === "begin"} onChange={() => setTiming("begin")} /> {t.begin}
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="text-sm text-gray-600">{t.returnInfo.replace("{ret}", weightedReturnPct.toFixed(2)).replace("{inf}", Number(inflationPct).toFixed(2)).replace("{diff}", rMinusG)}</div>
-            {nominalR <= inflationR && (
-              <div className="text-sm text-red-600">{t.lowReturn}</div>
-            )}
-          </div>
+          )}
+
+          {mode !== "cagr" && (
+            <>
+              <div className="bg-white rounded-2xl shadow p-5 space-y-4">
+                <h2 className="text-lg font-medium">{t.allocation}</h2>
+                <div className="grid grid-cols-3 gap-3">
+                  <label className="text-sm">{t.etf}
+                    <input type="number" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(pctETF) ? pctETF : 0} onChange={(e) => setPctETF(nval(e.target.value, 0))} />
+                  </label>
+                  <label className="text-sm">{t.bond}
+                    <input type="number" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(pctBond) ? pctBond : 0} onChange={(e) => setPctBond(nval(e.target.value, 0))} />
+                  </label>
+                  <label className="text-sm">{t.cash}
+                    <input type="number" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(pctCash) ? pctCash : 0} onChange={(e) => setPctCash(nval(e.target.value, 0))} />
+                  </label>
+                </div>
+                {allocWarn && (
+                  <p className="text-sm text-amber-600">{t.warning.replace("{sum}", allocSum.toFixed(1))}</p>
+                )}
+              </div>
+
+              <div className="bg-white rounded-2xl shadow p-5 space-y-4">
+                <h2 className="text-lg font-medium">{t["return"]}</h2>
+                <div className="grid grid-cols-3 gap-3">
+                  <label className="text-sm">ETF (%)
+                    <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(retETF) ? retETF : 0} onChange={(e) => setRetETF(nval(e.target.value, 0))} />
+                  </label>
+                  <label className="text-sm">Bond (%)
+                    <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(retBond) ? retBond : 0} onChange={(e) => setRetBond(nval(e.target.value, 0))} />
+                  </label>
+                  <label className="text-sm">Cash (%)
+                    <input type="number" step="0.1" className="mt-1 w-full border rounded-xl px-3 py-2" value={Number.isFinite(retCash) ? retCash : 0} onChange={(e) => setRetCash(nval(e.target.value, 0))} />
+                  </label>
+                </div>
+                <div className="text-sm text-gray-600">{t.returnInfo.replace("{ret}", weightedReturnPct.toFixed(2)).replace("{inf}", Number(inflationPct).toFixed(2)).replace("{diff}", rMinusG)}</div>
+                {nominalR <= inflationR && (
+                  <div className="text-sm text-red-600">{t.lowReturn}</div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-white rounded-2xl shadow p-6">
-            <h2 className="text-xl font-semibold mb-2">
-              {mode === "years" ? t.required : mode === "principal" ? t.yearsResult : t.compoundBalance}
-            </h2>
-            <div className="text-3xl font-bold">
-              {mode === "years" ? formatCurrency(neededPrincipal) : mode === "principal" ? yearsSupported : formatCurrency(finalBalance)}
-            </div>
+            <h2 className="text-xl font-semibold mb-2">{topTitle}</h2>
+            <div className="text-3xl font-bold">{topValue}</div>
             {mode === "years" && (<p className="text-sm text-gray-600 mt-1">{t.formula}</p>)}
+            {mode === "cagr" && (
+              <p className="text-sm text-gray-600 mt-1">
+                {cagrMode === "fromTotal" ? t.cagrFormula1 : t.cagrFormula2}
+              </p>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl shadow p-6">
@@ -567,8 +725,8 @@ export default function App() {
                   <Tooltip formatter={(v) => formatCurrency(Number(v))} labelFormatter={(l) => `Y${l}`} />
                   <Legend />
                   <Line type="monotone" dataKey="endPrincipal" name={t.principal} stroke="#1f77b4" dot={false} />
-                  {mode !== "compound" && <Line type="monotone" dataKey="expense" name={t.expense} stroke="#ff7f0e" dot={false} />}
-                  {mode !== "compound" && <Line type="monotone" dataKey="growth" name={t.growth} stroke="#2ca02c" dot={false} />}
+                  {mode !== "compound" && mode !== "cagr" && <Line type="monotone" dataKey="expense" name={t.expense} stroke="#ff7f0e" dot={false} />}
+                  {mode !== "compound" && mode !== "cagr" && <Line type="monotone" dataKey="growth" name={t.growth} stroke="#2ca02c" dot={false} />}
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -584,8 +742,8 @@ export default function App() {
                 <thead>
                   <tr className="bg-gray-100">
                     <th className="text-left p-2 rounded-l-xl">{t.year}</th>
-                    {mode !== "compound" && <th className="text-right p-2">{t.expense}</th>}
-                    {mode !== "compound" && <th className="text-right p-2">{t.growth}</th>}
+                    {mode !== "compound" && mode !== "cagr" && <th className="text-right p-2">{t.expense}</th>}
+                    {mode !== "compound" && mode !== "cagr" && <th className="text-right p-2">{t.growth}</th>}
                     <th className="text-right p-2 rounded-r-xl">{t.principal}</th>
                   </tr>
                 </thead>
@@ -593,15 +751,31 @@ export default function App() {
                   {rows.map((row) => (
                     <tr key={row.year} className="border-b last:border-0">
                       <td className="p-2">{row.year}</td>
-                      {mode !== "compound" && <td className="p-2 text-right">{formatCurrency(row.expense)}</td>}
-                      {mode !== "compound" && <td className="p-2 text-right">{formatCurrency(row.growth)}</td>}
+                      {mode !== "compound" && mode !== "cagr" && <td className="p-2 text-right">{formatCurrency(row.expense)}</td>}
+                      {mode !== "compound" && mode !== "cagr" && <td className="p-2 text-right">{formatCurrency(row.growth)}</td>}
                       <td className={`p-2 text-right ${row.endPrincipal < 0 ? 'text-red-600 font-semibold' : ''}`}>{formatCurrency(row.endPrincipal)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="mt-3 text-sm text-gray-700">{t.balance.replace("{years}", String(mode === "principal" ? yearsSupported : rows.length)).replace("{balance}", formatCurrency(finalBalance))}</div>
+            {mode !== "cagr" ? (
+              <div className="mt-3 text-sm text-gray-700">{t.balance.replace("{years}", String(mode === "principal" ? yearsSupported : rows.length)).replace("{balance}", formatCurrency(finalBalance))}</div>
+            ) : (
+              <div className="mt-3 text-sm text-gray-700">
+                {cagrMode === "fromTotal" ? (
+                  <>
+                    <div>{t.cagrOutputRate}: <span className="font-semibold">{formatPercent(cagrOutputs.cagr)}</span></div>
+                    <div>{t.cagrFromTotal}</div>
+                  </>
+                ) : (
+                  <>
+                    <div>{t.cagrOutputTotal}: <span className="font-semibold">{formatPercent(cagrOutputs.total)}</span></div>
+                    <div>{t.cagrFromCAGR}</div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl shadow p-6">
